@@ -311,13 +311,6 @@ static void MakeTables(void)
   driveTable[3] = DRIVE_PATTERN_STEP4_CCW;
   driveTable[4] = DRIVE_PATTERN_STEP5_CCW;
   driveTable[5] = DRIVE_PATTERN_STEP6_CCW;
-
-  zcInputTable[0] = ZC_COMP_U;
-  zcInputTable[1] = ZC_COMP_V;
-  zcInputTable[2] = ZC_COMP_W;
-  zcInputTable[3] = ZC_COMP_U;
-  zcInputTable[4] = ZC_COMP_V;
-  zcInputTable[5] = ZC_COMP_W;
 #else
   driveTable[0] = DRIVE_PATTERN_STEP1_CW;
   driveTable[1] = DRIVE_PATTERN_STEP2_CW;
@@ -325,14 +318,14 @@ static void MakeTables(void)
   driveTable[3] = DRIVE_PATTERN_STEP4_CW;
   driveTable[4] = DRIVE_PATTERN_STEP5_CW;
   driveTable[5] = DRIVE_PATTERN_STEP6_CW;
-
-  zcInputTable[0] = ZC_COMP_U;
-  zcInputTable[1] = ZC_COMP_V;
-  zcInputTable[2] = ZC_COMP_W;
-  zcInputTable[3] = ZC_COMP_U;
-  zcInputTable[4] = ZC_COMP_V;
-  zcInputTable[5] = ZC_COMP_W;
 #endif
+
+  zcInputTable[0] = ZC_COMP_W;
+  zcInputTable[1] = ZC_COMP_V;
+  zcInputTable[2] = ZC_COMP_U;
+  zcInputTable[3] = ZC_COMP_W;
+  zcInputTable[4] = ZC_COMP_V;
+  zcInputTable[5] = ZC_COMP_U;
 
   startupDelays[0] = 200;
   startupDelays[1] = 150;
