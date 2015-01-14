@@ -116,14 +116,17 @@
 //! Data direction register for drive pattern output.
 #define DRIVE_DDR   DDRD
 
-//! ADC multiplexer selection for channel U sampling.
-#define ADC_MUX_U           _BV(4)
+//! Zero crossing comparator input for U.
+#define ZC_COMP_U PB4
 
-//! ADC multiplexer selection for channel V sampling.
-#define ADC_MUX_V           _BV(5)
+//! Zero crossing comparator input for V.
+#define ZC_COMP_V PB5
 
-//! ADC multiplexer selection for channel W sampling.
-#define ADC_MUX_W           _BV(6)
+//! Zero crossing comparator input for W.
+#define ZC_COMP_W PB6
+
+//! PIN register for zero crossing comparator
+#define ZC_COMP_PIN PINB
 
 //! ADC multiplexer selection for speed reference sampling.
 #define ADC_MUX_SPEED_REF   _BV(0)
@@ -148,15 +151,6 @@
 
 //! ADC result alignment for reference voltage measurement.
 #define ADC_RES_ALIGNMENT_REF_VOLTAGE   (1 << ADLAR)
-
-//! ADMUX register value for channel U sampling.
-#define ADMUX_U             (ADC_REF_CHANNEL | ADC_RES_ALIGNMENT_BEMF | ADC_MUX_U)
-
-//! ADMUX register value for channel V sampling.
-#define ADMUX_V             (ADC_REF_CHANNEL | ADC_RES_ALIGNMENT_BEMF | ADC_MUX_V)
-
-//! ADMUX register value for channel W sampling.
-#define ADMUX_W             (ADC_REF_CHANNEL | ADC_RES_ALIGNMENT_BEMF | ADC_MUX_W)
 
 //! ADMUX register value for speed reference sampling.
 #define ADMUX_SPEED_REF     (ADC_REF_CHANNEL | ADC_RES_ALIGNMENT_SPEED_REF | ADC_MUX_SPEED_REF)
@@ -272,22 +266,19 @@
  *  Uncomment the following line if the analog comparator should be used to
  *  detect overcurrent.
  */
-#define ANALOG_COMPARATOR_ENABLE
+//#define ANALOG_COMPARATOR_ENABLE
 
 /*!
  *  The maximum duty cycles is decreased by this number of PWM duty cycle steps
  *  per milliAmpere current consumption over \ref CURRENT_LIMITER_START.
  */
-#define CURRENT_LIMITER_FACTOR   (1 / 5)
+#define CURRENT_LIMITER_FACTOR  1 / 5
 
 //! Macro that cuts all power to the motor.
 #define DISABLE_DRIVING               (DRIVE_PORT = 0x00)
 
 //! PWM compare value used during startup.
 #define STARTUP_PWM_COMPARE_VALUE  130
-
-//! Zero-cross threshold.
-#define ADC_ZC_THRESHOLD 0x98
 
 /*!
  *  The number of milliseconds to subtract from the zero-crossing to commutation time.

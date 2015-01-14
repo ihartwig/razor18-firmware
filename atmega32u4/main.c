@@ -42,8 +42,11 @@ static FILE USBSerialStream;
 //! Array of power stage enable signals for each commutation step.
 unsigned char driveTable[6];
 
-//! Array of ADC channel selections for each commutation step.
-unsigned char ADMUXTable[6];
+//! Array of input channel selections for each commutation step.
+unsigned char zcInputTable[6];
+
+//! Current channel not being driven, used for zero-crossing detection.
+unsigned char zcInputCurrent;
 
 //! Array holding the intercommutation delays used during startup.
 unsigned int startupDelays[STARTUP_NUM_COMMUTATIONS];
@@ -218,7 +221,7 @@ static void InitPorts(void)
   DRIVE_DDR = (1 << UL) | (1 << UH) | (1 << VL) | (1 << VH) | (1 << WL) | (1 << WH);
 
   // Init PORTD for PWM (OC0B) on PD0.
-  DDRD = (1 << PD0);
+  DDRD |= (1 << PD0);
 
   // Disable digital input buffers on ADC channels.
   DIDR0 = (1 << ADC4D) | (1 << ADC3D) | (1 << ADC2D) | (1 << ADC1D) | (1 << ADC0D);
@@ -253,16 +256,15 @@ static void InitADC(void)
 {
   // First make a measurement of the external reference voltage.
   ADMUX = ADMUX_REF_VOLTAGE;
-  ADCSRA = (1 << ADEN) | (1 << ADSC) | (1 << ADIF) | (ADC_PRESCALER_16);
+  ADCSRA = (1 << ADEN) | (1 << ADSC) | (0 << ADATE) | (1 << ADIF) | (0 << ADIE) | ADC_PRESCALER_16;
   while (ADCSRA & (1 << ADSC))
   {
 
   }
   referenceVoltageADC = ADCH;
 
-  // Initialize the ADC for autotriggered operation on PWM timer overflow.
-  ADCSRA = (1 << ADEN) | (0 << ADSC) | (1 << ADATE) | (1 << ADIF) | (0 << ADIE) | ADC_PRESCALER_8;
-  ADCSRB = ADC_TRIGGER_SOURCE;
+  // Initialize the ADC for normal operation.
+  ADCSRA = (1 << ADEN) | (0 << ADSC) | (0 << ADATE) | (1 << ADIF) | (0 << ADIE) | ADC_PRESCALER_8;
 }
 
 
@@ -310,12 +312,12 @@ static void MakeTables(void)
   driveTable[4] = DRIVE_PATTERN_STEP5_CCW;
   driveTable[5] = DRIVE_PATTERN_STEP6_CCW;
 
-  ADMUXTable[0] = ADMUX_W;
-  ADMUXTable[1] = ADMUX_V;
-  ADMUXTable[2] = ADMUX_U;
-  ADMUXTable[3] = ADMUX_W;
-  ADMUXTable[4] = ADMUX_V;
-  ADMUXTable[5] = ADMUX_U;
+  zcInputTable[0] = ZC_COMP_U;
+  zcInputTable[1] = ZC_COMP_V;
+  zcInputTable[2] = ZC_COMP_W;
+  zcInputTable[3] = ZC_COMP_U;
+  zcInputTable[4] = ZC_COMP_V;
+  zcInputTable[5] = ZC_COMP_W;
 #else
   driveTable[0] = DRIVE_PATTERN_STEP1_CW;
   driveTable[1] = DRIVE_PATTERN_STEP2_CW;
@@ -324,13 +326,12 @@ static void MakeTables(void)
   driveTable[4] = DRIVE_PATTERN_STEP5_CW;
   driveTable[5] = DRIVE_PATTERN_STEP6_CW;
 
-  ADMUXTable[0] = ADMUX_U;
-  ADMUXTable[1] = ADMUX_V;
-  ADMUXTable[2] = ADMUX_W;
-  ADMUXTable[3] = ADMUX_U;
-  ADMUXTable[4] = ADMUX_V;
-  ADMUXTable[5] = ADMUX_W;
-
+  zcInputTable[0] = ZC_COMP_U;
+  zcInputTable[1] = ZC_COMP_V;
+  zcInputTable[2] = ZC_COMP_W;
+  zcInputTable[3] = ZC_COMP_U;
+  zcInputTable[4] = ZC_COMP_V;
+  zcInputTable[5] = ZC_COMP_W;
 #endif
 
   startupDelays[0] = 200;
@@ -360,6 +361,7 @@ static void StartMotor(void)
   //Preposition.
   DRIVE_PORT = driveTable[nextCommutationStep];
   StartupDelay(STARTUP_LOCK_DELAY);
+  zcInputCurrent = driveTable[nextCommutationStep];
   nextCommutationStep++;
   nextDrivePattern = driveTable[nextCommutationStep];
 
@@ -368,7 +370,7 @@ static void StartMotor(void)
     DRIVE_PORT = nextDrivePattern;
     StartupDelay(startupDelays[i]);
 
-    ADMUX = ADMUXTable[nextCommutationStep];
+    zcInputCurrent = driveTable[nextCommutationStep];
 
     // Use LSB of nextCommutationStep to determine zero crossing polarity.
     zcPolarity = nextCommutationStep & 0x01;
@@ -389,6 +391,23 @@ static void StartMotor(void)
   filteredTimeSinceCommutation = startupDelays[STARTUP_NUM_COMMUTATIONS - 1] * (STARTUP_DELAY_MULTIPLIER  / 2);
 }
 
+//! \brief Waits for pending ADC operations to finish
+static inline void wait_adc() {
+  while((ADCSRA & (1 << ADSC)))
+  {
+  }
+}
+
+/*! \brief Starts the ADC then waits for and returns the measurement
+ *
+ * Set up ADMUX before calling.
+ */
+static inline char run_adc() {
+  ADCSRA |= (1 << ADSC);
+  wait_adc();
+  return ADCH;
+}
+
 
 /*! \brief Timer/counter0 bottom overflow. Used for zero-cross detection.
  *
@@ -405,18 +424,10 @@ static void StartMotor(void)
 // __interrupt void MotorPWMBottom()
 ISR(TIMER0_OVF_vect)
 {
-  unsigned char temp;
+  unsigned char isAboveZero;
 
-  // Disable ADC auto-triggering. This must be done here to avoid wrong channel being sampled on manual samples later.
-  ADCSRA &= ~((1 << ADATE) | (1 << ADIE));
-
-  // Wait for auto-triggered ADC sample to complete.
-  while (!(ADCSRA & (1 << ADIF)))
-  {
-
-  }
-  temp = ADCH;
-  if (((zcPolarity == EDGE_RISING) && (temp > ADC_ZC_THRESHOLD)) || ((zcPolarity == EDGE_FALLING) && (temp < ADC_ZC_THRESHOLD)))
+  isAboveZero = !(ZC_COMP_PIN & _BV(zcInputCurrent));
+  if ((zcPolarity == EDGE_RISING && isAboveZero) || (zcPolarity == EDGE_FALLING && !isAboveZero))
   {
     unsigned int timeSinceCommutation;
 
@@ -438,73 +449,27 @@ ISR(TIMER0_OVF_vect)
     // Disable Timer/Counter0 overflow ISR.
     DISABLE_ALL_TIMER0_INTS;
 
-    // Read speed reference.
-
     // Make sure that a sample is not in progress.
-    while (ADCSRA & (1 << ADSC))
-    {
+    wait_adc();
 
-    }
-    // Change channel
+    // Read speed reference.
     ADMUX = ADMUX_SPEED_REF;
-
-    // Start conversion manually.
-    ADCSRA |= (1 << ADSC);
-
-    // Wait for conversion to complete.
-    while((ADCSRA & (1 << ADSC)))
-    {
-
-    }
-    speedReferenceADC = ADCH;
+    speedReferenceADC = run_adc();
 
     // Read voltage reference.
-    // Change ADC channel.
     ADMUX = ADMUX_REF_VOLTAGE;
-    // Start conversion manually.
-    ADCSRA |= (1 << ADSC);
-    // Wait for conversion to complete.
-    while((ADCSRA & (1 << ADSC)))
-    {
-
-    }
-    referenceVoltageADC = ADCH;
-
-    // Enable current measurements in ADC ISR.
-    ADMUX = ADMUX_CURRENT;
-    ADCSRA |= (1 << ADATE) | (1 << ADIE) | ADC_PRESCALER;
+    referenceVoltageADC = run_adc();
   }
   else
   {
-    unsigned char tempADMUX;
-
-    tempADMUX = ADMUX;
-    // Read current
-
     // Make sure that a sample is not in progress
-    while (ADCSRA & (1 << ADSC))
-    {
-
-    }
-
-    // Change channel
-    ADMUX = ADMUX_CURRENT;
-
-    // Start conversion manually.
-    ADCSRA |= (1 << ADSC);
-    // Wait for conversion to complete.
-    while((ADCSRA & (1 << ADSC)))
-    {
-
-    }
-
-    shuntVoltageADC = ADCH;
-    currentUpdated = TRUE;
-
-    // Restore ADC channel.
-    ADMUX = tempADMUX;
-    ADCSRA |= (1 << ADATE) | (1 << ADIE) | ADC_PRESCALER;
+    wait_adc();
   }
+
+  // Read current.
+  ADMUX = ADMUX_CURRENT;
+  shuntVoltageADC = run_adc();
+  currentUpdated = TRUE;
 }
 
 
@@ -556,16 +521,8 @@ ISR(TIMER1_COMPB_vect)
   SET_TIMER0_INT_ZC_DETECTION;
   DISABLE_ALL_TIMER1_INTS;
 
-  // Set up ADC for zero-cross detection
-  ADMUX = ADMUXTable[nextCommutationStep];
-
-  // Wait for ADC to complete
-  while (!(ADCSRA & (1 << ADIF)))
-  {
-
-  }
-  ADCSRA &= ~(1 << ADIE);
-  ADCSRA |= (1 << ADSC) | (1 << ADATE);
+  // Move to next input for zero-cross detection
+  zcInputCurrent = zcInputTable[nextCommutationStep];
 
   // Rotate commutation step counter.
   nextCommutationStep++;
@@ -574,23 +531,6 @@ ISR(TIMER1_COMPB_vect)
     nextCommutationStep = 0;
   }
   nextDrivePattern = driveTable[nextCommutationStep];
-}
-
-
-/* \brief ADC complete interrupt service routine, used for current measurements.
- *
- *  This interrupt service routine is only enabled when current measurements are
- *  auto-triggered by the PWM counter overflow. The measured value is simply
- *  copied to \ref shuntVoltageADC, the \ref currentUpdated flag is set and
- *  Timer0 (PWM timer) interrupt flags are cleared.
- */
-// #pragma vector=ADC_vect
-// __interrupt void CurrentMeasurementComplete()
-ISR(ADC_vect)
-{
-  shuntVoltageADC = ADCH;
-  currentUpdated = TRUE;
-  CLEAR_ALL_TIMER0_INT_FLAGS;
 }
 
 
