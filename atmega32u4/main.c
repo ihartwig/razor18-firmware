@@ -358,9 +358,10 @@ static void StartMotor(void)
   nextCommutationStep = 0;
 
   //Preposition.
+  StartupDelay(STARTUP_PRE_DELAY);
   DRIVE_PORT = driveTable[nextCommutationStep];
   StartupDelay(STARTUP_LOCK_DELAY);
-  zcInputCurrent = driveTable[nextCommutationStep];
+  zcInputCurrent = zcInputTable[nextCommutationStep];
   nextCommutationStep++;
   nextDrivePattern = driveTable[nextCommutationStep];
 
@@ -369,7 +370,7 @@ static void StartMotor(void)
     DRIVE_PORT = nextDrivePattern;
     StartupDelay(startupDelays[i]);
 
-    zcInputCurrent = driveTable[nextCommutationStep];
+    zcInputCurrent = zcInputTable[nextCommutationStep];
 
     // Use LSB of nextCommutationStep to determine zero crossing polarity.
     zcPolarity = nextCommutationStep & 0x01;

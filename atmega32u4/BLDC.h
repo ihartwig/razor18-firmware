@@ -180,13 +180,18 @@
 #define STARTUP_NUM_COMMUTATIONS  8
 
 //! Startup delays are given in milliseconds times STARTUP_DELAY_MULTIPLIER.
-#define STARTUP_DELAY_MULTIPLIER  100
+#define STARTUP_DELAY_MULTIPLIER  2000
 
 /*!
  *  Number of milliseconds to lock rotor in first commutation step before
  *  the timed startup sequence is initiated.
  */
-#define STARTUP_LOCK_DELAY        10000
+#define STARTUP_LOCK_DELAY        2000//10000
+
+/*!
+ *  Number of milliseconds to delay before asserting anything.
+ */
+#define STARTUP_PRE_DELAY        200
 
 //! The maximum number of restart attempts without external action when stall is detected.
 #define MAX_RESTART_ATTEMPTS    10
