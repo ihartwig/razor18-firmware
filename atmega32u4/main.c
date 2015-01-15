@@ -130,6 +130,8 @@ int main (void) {
   {
     PWMControl();
 
+    fprintf(&USBSerialStream, "speedReferenceADC: %4d, nextCommutationStep: %1d\n", speedReferenceADC, nextCommutationStep);
+
     // call maintenance functions
     CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
     USB_USBTask();
@@ -217,6 +219,10 @@ static void ResetHandler(void)
  */
 static void InitPorts(void)
 {
+  // Turn on boot pin
+  DDRE |= (1 << PE6);
+  PORTE |= (1 << PE6);
+
   // Init DRIVE_DDR for motor driving.
   DRIVE_DDR = (1 << UL) | (1 << UH) | (1 << VL) | (1 << VH) | (1 << WL) | (1 << WH);
 
