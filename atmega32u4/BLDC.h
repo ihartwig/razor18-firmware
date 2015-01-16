@@ -24,13 +24,16 @@
 #define __BLDC_H__
 
 //! System clock frequecy. Used to calculate PWM TOP value.
-#define SYSTEM_FREQUENCY        8000000
+#define SYSTEM_FREQUENCY    16000000UL
 
 //! PWM base frequency. Used to calculate PWM TOP value.
-#define PWM_BASE_FREQUENCY      20000
+#define PWM_BASE_FREQUENCY  5000
+
+//! Timer 0 prescaler
+#define PWM_PRESCALER       8
 
 //! PWM TOP value. Automatically calculated to give desired \ref PWM_BASE_FREQUENCY.
-#define PWM_TOP_VALUE           (SYSTEM_FREQUENCY / PWM_BASE_FREQUENCY / 2)
+#define PWM_TOP_VALUE       (SYSTEM_FREQUENCY / PWM_BASE_FREQUENCY / PWM_PRESCALER / 2)
 
 //! Boolean FALSE value.
 #define FALSE     0
@@ -286,10 +289,10 @@
 #define STARTUP_PWM_COMPARE_VALUE  130
 
 /*!
- *  The number of milliseconds to subtract from the zero-crossing to commutation time.
+ *  The number of microseconds to subtract from the zero-crossing to commutation time.
  *  Used to compensate for zero-cross sample frequency.
  */
-#define COMMUTATION_CORRECTION 50
+#define COMMUTATION_CORRECTION 200
 
 //! The minimum allowed PWM compare value.
 #define MIN_PWM_COMPARE_VALUE    90

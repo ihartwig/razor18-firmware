@@ -39,6 +39,9 @@ static FILE USBSerialStream;
 
 /* Global Data */
 
+//! Whether the speed reference is above the threshold
+unsigned char driveOn;
+
 //! Array of power stage enable signals for each commutation step.
 unsigned char driveTable[6];
 
@@ -80,6 +83,9 @@ volatile unsigned char zcPolarity;
  *  quick access
  */
 volatile unsigned char nextCommutationStep;
+
+//! Flag that specifies whether a commutation has just occured.
+volatile unsigned char commutationUpdated;
 
 //! ADC reading of external analog speed reference.
 volatile unsigned char speedReferenceADC;
@@ -123,14 +129,19 @@ int main (void) {
   StartMotor();
 
   // Turn on watchdog for stall-detection.
-  WatchdogTimerEnable();
+  // TODO WatchdogTimerEnable();
   sei(); // __enable_interrupt();
 
   for(;;)
   {
     PWMControl();
 
-    fprintf(&USBSerialStream, "speedReferenceADC: %4d, nextCommutationStep: %1d\n", speedReferenceADC, nextCommutationStep);
+    if (commutationUpdated) {
+      fprintf(&USBSerialStream,
+          "speed: %4d, commutation: %1d, time: %5d\r\n",
+          speedReferenceADC, nextCommutationStep, filteredTimeSinceCommutation);
+      commutationUpdated = 0;
+    }
 
     // call maintenance functions
     CDC_Device_USBTask(&VirtualSerial_CDC_Interface);
@@ -243,7 +254,7 @@ static void InitTimers(void)
 {
   // Set up Timer/counter0 for PWM, output on OCR0B, OCR0A as TOP value, prescaler = 1.
   TCCR0A = (0 << COM0A1) | (0 << COM0A0) | (1 << COM0B1) | (0 << COM0B0) | (0 << WGM01) | (1 << WGM00);
-  TCCR0B = (1 << WGM02) | (0 << CS02) | (0 << CS01) | (1 << CS00);
+  TCCR0B = (1 << WGM02) | (0 << CS02) | (1 << CS01) | (0 << CS00);
   OCR0A = PWM_TOP_VALUE;
   TIFR0 = TIFR0;
   TIMSK0 = (0 << TOIE0);
@@ -351,6 +362,7 @@ static void MakeTables(void)
  */
 static void StartMotor(void)
 {
+  /* TODO
   unsigned char i;
 
   SET_PWM_COMPARE_VALUE(STARTUP_PWM_COMPARE_VALUE);
@@ -360,17 +372,16 @@ static void StartMotor(void)
   //Preposition.
   StartupDelay(STARTUP_PRE_DELAY);
   DRIVE_PORT = driveTable[nextCommutationStep];
-  StartupDelay(STARTUP_LOCK_DELAY);
   zcInputCurrent = zcInputTable[nextCommutationStep];
+  StartupDelay(STARTUP_LOCK_DELAY);
   nextCommutationStep++;
   nextDrivePattern = driveTable[nextCommutationStep];
 
   for (i = 0; i < STARTUP_NUM_COMMUTATIONS; i++)
   {
     DRIVE_PORT = nextDrivePattern;
-    StartupDelay(startupDelays[i]);
-
     zcInputCurrent = zcInputTable[nextCommutationStep];
+    StartupDelay(startupDelays[i]);
 
     // Use LSB of nextCommutationStep to determine zero crossing polarity.
     zcPolarity = nextCommutationStep & 0x01;
@@ -382,6 +393,14 @@ static void StartMotor(void)
     }
     nextDrivePattern = driveTable[nextCommutationStep];
   }
+  */
+
+  // Start driving motor
+  DRIVE_PORT = 0;
+  zcInputCurrent = zcInputTable[0];
+  nextCommutationStep = 1;
+  nextDrivePattern = driveTable[1];
+  commutationUpdated = 1;
 
   // Switch to sensorless commutation.
   TCNT1 = 0;
@@ -452,10 +471,6 @@ ISR(TIMER0_OVF_vect)
     // Make sure that a sample is not in progress.
     wait_adc();
 
-    // Read speed reference.
-    ADMUX = ADMUX_SPEED_REF;
-    speedReferenceADC = run_adc();
-
     // Read voltage reference.
     ADMUX = ADMUX_REF_VOLTAGE;
     referenceVoltageADC = run_adc();
@@ -467,9 +482,20 @@ ISR(TIMER0_OVF_vect)
   }
 
   // Read current.
-  ADMUX = ADMUX_CURRENT;
+  /*ADMUX = ADMUX_CURRENT;
   shuntVoltageADC = run_adc();
-  currentUpdated = TRUE;
+  currentUpdated = TRUE;*/
+
+  // Read speed reference.
+  ADMUX = ADMUX_SPEED_REF;
+  speedReferenceADC = 0;//run_adc();
+
+  if (speedReferenceADC < 10) {
+    DRIVE_PORT = 0;
+    driveOn = 0;
+  } else {
+    driveOn = 1;
+  }
 }
 
 
@@ -490,7 +516,10 @@ ISR(TIMER0_OVF_vect)
 ISR(TIMER1_COMPA_vect)
 {
   // Commutate and clear commutation timer.
-  DRIVE_PORT = nextDrivePattern;
+  if (driveOn) {
+    DRIVE_PORT = nextDrivePattern;
+  }
+  zcInputCurrent = zcInputTable[nextCommutationStep];
   TCNT1 = 0;
 
   zcPolarity = nextCommutationStep & 0x01;
@@ -521,15 +550,13 @@ ISR(TIMER1_COMPB_vect)
   SET_TIMER0_INT_ZC_DETECTION;
   DISABLE_ALL_TIMER1_INTS;
 
-  // Move to next input for zero-cross detection
-  zcInputCurrent = zcInputTable[nextCommutationStep];
-
   // Rotate commutation step counter.
   nextCommutationStep++;
   if (nextCommutationStep >= 6)
   {
     nextCommutationStep = 0;
   }
+  commutationUpdated = 1;
   nextDrivePattern = driveTable[nextCommutationStep];
 }
 
