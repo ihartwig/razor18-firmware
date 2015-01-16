@@ -59,6 +59,7 @@ unsigned int startupDelays[STARTUP_NUM_COMMUTATIONS];
  *  through an IIR filter, so the value stored is not the most recent measuremnt.
  *  The variable is stored in registers R14-R15 for quicker access.
  */
+volatile unsigned int unfilteredTimeSinceCommutation;
 volatile unsigned int filteredTimeSinceCommutation;
 
 /*! \brief The power stage enable signals that will be output to the motor drivers
@@ -134,12 +135,25 @@ int main (void) {
 
   for(;;)
   {
+    // Read speed reference
+    ADMUX = ADMUX_SPEED_REF;
+    speedReferenceADC = run_adc();
+    if (speedReferenceADC < 10) {
+      DRIVE_PORT = 0;
+      driveOn = 0;
+    } else {
+      driveOn = 1;
+    }
+
+    // Use the speed reference for good
     PWMControl();
 
+    // Motor status
     if (commutationUpdated) {
       fprintf(&USBSerialStream,
-          "speed: %4d, commutation: %1d, time: %5d\r\n",
-          speedReferenceADC, nextCommutationStep, filteredTimeSinceCommutation);
+          "speed: %4d, commutation: %1d, time: %5d, %5d\r\n",
+          speedReferenceADC, nextCommutationStep, filteredTimeSinceCommutation,
+          unfilteredTimeSinceCommutation);
       commutationUpdated = 0;
     }
 
@@ -241,7 +255,7 @@ static void InitPorts(void)
   DDRD |= (1 << PD0);
 
   // Disable digital input buffers on ADC channels.
-  DIDR0 = (1 << ADC4D) | (1 << ADC3D) | (1 << ADC2D) | (1 << ADC1D) | (1 << ADC0D);
+  DIDR0 = (1 << ADC7D) | (1 << ADC1D) | (1 << ADC0D);
 }
 
 
@@ -411,7 +425,7 @@ static void StartMotor(void)
 }
 
 //! \brief Waits for pending ADC operations to finish
-static inline void wait_adc() {
+static inline void wait_adc(void) {
   while((ADCSRA & (1 << ADSC)))
   {
   }
@@ -421,7 +435,7 @@ static inline void wait_adc() {
  *
  * Set up ADMUX before calling.
  */
-static inline char run_adc() {
+static inline char run_adc(void) {
   ADCSRA |= (1 << ADSC);
   wait_adc();
   return ADCH;
@@ -454,6 +468,8 @@ ISR(TIMER0_OVF_vect)
     timeSinceCommutation = TCNT1;
     TCNT1 = COMMUTATION_CORRECTION;
 
+    unfilteredTimeSinceCommutation = timeSinceCommutation;
+
     // Filter the current ZC detection with earlier measurements through an IIR filter.
     filteredTimeSinceCommutation = (COMMUTATION_TIMING_IIR_COEFF_A * timeSinceCommutation
                                 + COMMUTATION_TIMING_IIR_COEFF_B * filteredTimeSinceCommutation)
@@ -469,33 +485,22 @@ ISR(TIMER0_OVF_vect)
     DISABLE_ALL_TIMER0_INTS;
 
     // Make sure that a sample is not in progress.
-    wait_adc();
+    // wait_adc();
 
     // Read voltage reference.
-    ADMUX = ADMUX_REF_VOLTAGE;
-    referenceVoltageADC = run_adc();
+    // ADMUX = ADMUX_REF_VOLTAGE;
+    // referenceVoltageADC = run_adc();
   }
   else
   {
     // Make sure that a sample is not in progress
-    wait_adc();
+    // wait_adc();
   }
 
   // Read current.
   /*ADMUX = ADMUX_CURRENT;
   shuntVoltageADC = run_adc();
   currentUpdated = TRUE;*/
-
-  // Read speed reference.
-  ADMUX = ADMUX_SPEED_REF;
-  speedReferenceADC = 0;//run_adc();
-
-  if (speedReferenceADC < 10) {
-    DRIVE_PORT = 0;
-    driveOn = 0;
-  } else {
-    driveOn = 1;
-  }
 }
 
 

@@ -132,16 +132,16 @@
 #define ZC_COMP_PIN PINB
 
 //! ADC multiplexer selection for speed reference sampling.
-#define ADC_MUX_SPEED_REF   _BV(0)
+#define ADC_MUX_SPEED_REF   0
 
 //! ADC multiplexer selection for current sampling.
-#define ADC_MUX_CURRENT     _BV(1)
+#define ADC_MUX_CURRENT     1
 
 //! ADC multiplexer selection for reference voltage sampling.
-#define ADC_MUX_REF_VOLTAGE _BV(7)
+#define ADC_MUX_REF_VOLTAGE 7
 
 //! ADC reference channel selection.
-#define ADC_REF_CHANNEL                 ((0 << REFS1) | (0 << REFS0))
+#define ADC_REF_CHANNEL                 ((0 << REFS1) | (1 << REFS0))
 
 //! ADC result alignment for BEMF measurement.
 #define ADC_RES_ALIGNMENT_BEMF          (1 << ADLAR)

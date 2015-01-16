@@ -42,6 +42,8 @@ static unsigned long CalculateSpeedSetpoint(void);
 static unsigned int CalculateCurrent(void);
 static signed int SpeedControl(void);
 static unsigned char CurrentControl(void);
+static inline void wait_adc(void);
+static inline char run_adc(void);
 
 void EVENT_USB_Device_Connect(void);
 void EVENT_USB_Device_Disconnect(void);
